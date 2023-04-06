@@ -10,12 +10,12 @@
 
 static const uint PIN_DOOR_CTRL = 9;
 static const uint PIN_DOOR_STAT = 26;
-static const uint PIN_PWR_CTRL = 16;
+static const uint PIN_PWR_CTRL = 20;
 
-static const uint8_t SLEEP_MIN = 10;
+static const uint8_t SLEEP_MIN = 1;
 static const uint8_t SLEEP_SEC = 0;
 
-static const uint16_t DOOR_OPEN_THRSHLD = 5;
+static const uint16_t DOOR_OPEN_THRSHLD = 2000;
 static const float ADC_CONV_FACT = 3.3f / (1 << 12);
 
 static void gotoSleep(uint8_t min, uint8_t sec);
@@ -34,12 +34,26 @@ int main() {
 
   stdio_init_all();
 
+  gpio_init(PICO_DEFAULT_LED_PIN);
+  gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+
+  gpio_init(PIN_PWR_CTRL);
+  gpio_set_dir(PIN_PWR_CTRL, GPIO_OUT);
+  gpio_put(PIN_PWR_CTRL, false);
+
+  gpio_init(PIN_DOOR_CTRL);
+  gpio_set_dir(PIN_DOOR_CTRL, GPIO_OUT);
+  gpio_put(PIN_DOOR_CTRL, false);
+
   // save values for later
   uint scb_orig = scb_hw->scr;
   uint clock0_orig = clocks_hw->sleep_en0;
   uint clock1_orig = clocks_hw->sleep_en1;
 
+  gpio_put(PICO_DEFAULT_LED_PIN, true);
+
   if (doorOpen(DOOR_OPEN_THRSHLD)) {
+    gpio_put(PICO_DEFAULT_LED_PIN, false);
     gotoSleep(SLEEP_MIN, SLEEP_SEC);
     // reset processor and clocks back to defaults
     recover_from_sleep(scb_orig, clock0_orig, clock1_orig);
@@ -51,9 +65,6 @@ int main() {
   shutDown();
 
   // we only see blinking if something really went wrong
-  gpio_init(PICO_DEFAULT_LED_PIN);
-  gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-
   while (true) {
     gpio_put(PICO_DEFAULT_LED_PIN, 0);
     sleep_ms(500);
@@ -134,9 +145,6 @@ static void rtc_sleep(int8_t minute_to_sleep_to, int8_t second_to_sleep_to,
  *
  */
 static void shutDown(void) {
-  gpio_init(PIN_PWR_CTRL);
-  gpio_set_dir(PIN_PWR_CTRL, GPIO_OUT);
-
   gpio_put(PIN_PWR_CTRL, true);
 }
 
@@ -144,10 +152,9 @@ static void shutDown(void) {
  *
  */
 static void closeDoor(void) {
-  gpio_init(PIN_DOOR_CTRL);
-  gpio_set_dir(PIN_DOOR_CTRL, GPIO_OUT);
-
   gpio_put(PIN_DOOR_CTRL, true);
+  sleep_ms(10);
+  gpio_put(PIN_DOOR_CTRL, false);
 }
 
 /* @brief: checks if ADC value indicates door open state or not
@@ -167,7 +174,7 @@ static bool doorOpen(uint16_t treshold) {
   // uncomment, in case we botheer about the real value
   // current_door_state = adc_raw * ADC_CONV_FACT;
 
-  if (adc_raw >= treshold) {
+  if (adc_raw <= treshold) {
     return true;
   }
   return false;
