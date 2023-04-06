@@ -12,7 +12,7 @@ static const uint PIN_DOOR_CTRL = 9;
 static const uint PIN_DOOR_STAT = 26;
 static const uint PIN_PWR_CTRL = 20;
 
-static const uint8_t SLEEP_MIN = 1;
+static const uint8_t SLEEP_MIN = 10;
 static const uint8_t SLEEP_SEC = 0;
 
 static const uint16_t DOOR_OPEN_THRSHLD = 2000;
