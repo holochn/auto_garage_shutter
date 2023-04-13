@@ -8,12 +8,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
-static const uint PIN_DOOR_CTRL = 9;
+static const uint PIN_DOOR_CTRL = 6;
 static const uint PIN_DOOR_STAT = 26;
 static const uint PIN_PWR_CTRL = 20;
 
 static const uint8_t SLEEP_MIN = 10;
 static const uint8_t SLEEP_SEC = 0;
+static const uint16_t IMPULS_LEN_DOOR_CLOSE = 500;
 
 static const uint16_t DOOR_OPEN_THRSHLD = 2000;
 static const float ADC_CONV_FACT = 3.3f / (1 << 12);
@@ -27,41 +28,37 @@ static void sleep_callback(void) {}
 static void shutDown(void);
 static bool doorOpen(uint16_t threshold);
 static void closeDoor(void);
+static void blink(uint8_t pin, uint8_t repeat, uint wait);
+static void init_gpios();
 
 int main() {
 
   float current_door_state = 0.0f;
 
   stdio_init_all();
-
-  gpio_init(PICO_DEFAULT_LED_PIN);
-  gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-
-  gpio_init(PIN_PWR_CTRL);
-  gpio_set_dir(PIN_PWR_CTRL, GPIO_OUT);
-  gpio_put(PIN_PWR_CTRL, false);
-
-  gpio_init(PIN_DOOR_CTRL);
-  gpio_set_dir(PIN_DOOR_CTRL, GPIO_OUT);
-  gpio_put(PIN_DOOR_CTRL, false);
+  init_gpios();
 
   // save values for later
   uint scb_orig = scb_hw->scr;
   uint clock0_orig = clocks_hw->sleep_en0;
   uint clock1_orig = clocks_hw->sleep_en1;
 
-  gpio_put(PICO_DEFAULT_LED_PIN, true);
+  blink(PICO_DEFAULT_LED_PIN, 3, 1000);
 
   if (doorOpen(DOOR_OPEN_THRSHLD)) {
     gpio_put(PICO_DEFAULT_LED_PIN, false);
+    blink(PICO_DEFAULT_LED_PIN, 10, 200);
     gotoSleep(SLEEP_MIN, SLEEP_SEC);
+
     // reset processor and clocks back to defaults
     recover_from_sleep(scb_orig, clock0_orig, clock1_orig);
+    
     if (doorOpen(DOOR_OPEN_THRSHLD)) {
+      blink(PICO_DEFAULT_LED_PIN, 3, 2000);
       closeDoor();
     }
   }
-
+  blink(PICO_DEFAULT_LED_PIN, 3, 1000);
   shutDown();
 
   // we only see blinking if something really went wrong
@@ -106,6 +103,8 @@ void recover_from_sleep(uint scb_orig, uint clock0_orig, uint clock1_orig) {
   clocks_init();
   stdio_init_all();
 
+  init_gpios();
+
   return;
 }
 
@@ -144,16 +143,14 @@ static void rtc_sleep(int8_t minute_to_sleep_to, int8_t second_to_sleep_to,
 /* @brief: Shuts down the board by triggering a transistor connected on GPIO
  *
  */
-static void shutDown(void) {
-  gpio_put(PIN_PWR_CTRL, true);
-}
+static void shutDown(void) { gpio_put(PIN_PWR_CTRL, true); }
 
 /* @brief: closes door by triggering a GPIO
  *
  */
 static void closeDoor(void) {
   gpio_put(PIN_DOOR_CTRL, true);
-  sleep_ms(10);
+  sleep_ms(IMPULS_LEN_DOOR_CLOSE);
   gpio_put(PIN_DOOR_CTRL, false);
 }
 
@@ -171,11 +168,33 @@ static bool doorOpen(uint16_t treshold) {
   adc_select_input(0);
 
   adc_raw = adc_read();
-  // uncomment, in case we botheer about the real value
+  // uncomment, in case we bother about the real value
   // current_door_state = adc_raw * ADC_CONV_FACT;
 
   if (adc_raw <= treshold) {
     return true;
   }
   return false;
+}
+
+static void init_gpios() {
+  gpio_init(PICO_DEFAULT_LED_PIN);
+  gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+
+  gpio_init(PIN_PWR_CTRL);
+  gpio_set_dir(PIN_PWR_CTRL, GPIO_OUT);
+  gpio_put(PIN_PWR_CTRL, false);
+
+  gpio_init(PIN_DOOR_CTRL);
+  gpio_set_dir(PIN_DOOR_CTRL, GPIO_OUT);
+  gpio_put(PIN_DOOR_CTRL, false);
+}
+
+static void blink(uint8_t pin, uint8_t repeat, uint wait) {
+  for (uint8_t i = 0; i < repeat; i++) {
+    gpio_put(pin, true);
+    sleep_ms(wait);
+    gpio_put(pin, false);
+    sleep_ms(wait);
+  }
 }
